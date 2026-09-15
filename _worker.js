@@ -167,26 +167,17 @@ async function establishTCP(address, port, proxyIPConfig) {
     }
 
     let directSocket = null;
-    let timer = null;
 
     try {
         directSocket = connect({ hostname: address, port });
-        
-        // Race: Cloudflare IP blocks/stalls get cut off after 500ms
-        const timeoutPromise = new Promise((_, reject) => {
-            timer = setTimeout(() => reject(new Error('Direct timeout')), 500);
-        });
-
-        await Promise.race([directSocket.opened, timeoutPromise]);
-        clearTimeout(timer);
+        await directSocket.opened;
         return directSocket;
     } catch (_) {
-        clearTimeout(timer);
         if (directSocket) {
             try { directSocket.close(); } catch (_) {}
         }
 
-        // Fast fallback to selected ProxyIP
+        // Fast fallback to selected ProxyIP (Cloudflare-blocked destinations reject in ~0-2ms)
         const proxies = proxyIPConfig.split(',').map(s => s.trim()).filter(Boolean);
         const selected = proxies[Math.floor(Math.random() * proxies.length)];
         const { host, port: pPort } = parseHostAndPort(selected, port);
