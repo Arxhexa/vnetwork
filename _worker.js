@@ -126,11 +126,11 @@ async function handleSession(ws, earlyDataHeader, userID, proxyIP) {
                         if (ws.readyState !== WebSocket.OPEN) return;
                         ws.send(chunk);
 
-                        // Sample C++ getter only every 32 chunks; pause at 8MB watermark
+                        // Sample C++ getter only every 32 chunks; pause at 16MB watermark
                         if ((++packetCount & 31) === 0 && ws.bufferedAmount > 16 * 1024 * 1024) {
                             return new Promise(resolve => {
                                 const interval = setInterval(() => {
-                                    if (ws.readyState !== WebSocket.OPEN || ws.bufferedAmount <= 2 * 1024 * 1024) {
+                                    if (ws.readyState !== WebSocket.OPEN || ws.bufferedAmount <= 4 * 1024 * 1024) {
                                         clearInterval(interval);
                                         resolve();
                                     }
