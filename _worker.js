@@ -115,20 +115,27 @@ async function handleSession(ws, earlyDataHeader, userID, proxyIP) {
 
             reader.releaseLock();
 
-            // Symmetrical data relay with WebSocket backpressure
+            // Symmetrical data relay with optimized low-overhead backpressure
+            let packetCount = 0;
+
             await Promise.race([
                 wsStream.readable.pipeTo(remoteSocket.writable),
                 remoteSocket.readable.pipeTo(new WritableStream({
-                    async write(chunk) {
+                    // Synchronous write path: Zero Promise allocations during normal streaming
+                    write(chunk) {
                         if (ws.readyState !== WebSocket.OPEN) return;
                         ws.send(chunk);
 
-                        // Backpressure: pause only after reaching 4MB
-                        if (ws.bufferedAmount > 4 * 1024 * 1024) {
-                            while (ws.bufferedAmount > 1024 * 1024) {
-                                if (ws.readyState !== WebSocket.OPEN) break;
-                                await new Promise(r => setTimeout(r, 5));
-                            }
+                        // Sample C++ getter only every 32 chunks; pause at 8MB watermark
+                        if ((++packetCount & 31) === 0 && ws.bufferedAmount > 16 * 1024 * 1024) {
+                            return new Promise(resolve => {
+                                const interval = setInterval(() => {
+                                    if (ws.readyState !== WebSocket.OPEN || ws.bufferedAmount <= 2 * 1024 * 1024) {
+                                        clearInterval(interval);
+                                        resolve();
+                                    }
+                                }, 5);
+                            });
                         }
                     }
                 }))
